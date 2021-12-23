@@ -1,6 +1,8 @@
 FROM node:10.16-alpine
 WORKDIR /opt/mre
 
+ENV PORT=80
+
 COPY public ./public/
 
 COPY package*.json ./
@@ -10,5 +12,5 @@ COPY tsconfig.json ./
 COPY src ./src/
 RUN ["npm", "run", "build"]
 
-EXPOSE 3901/tcp
+EXPOSE 80/tcp
 CMD ["npm", "start"]
