@@ -221,7 +221,7 @@ export default class WearAHat {
                 return;
             }
         });
-        return;
+        // return;
     }
 
     // If the user selected 'clear', then early out.
