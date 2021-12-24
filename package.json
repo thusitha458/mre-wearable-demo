@@ -1,6 +1,6 @@
 {
-  "name": "wear-a-helmet",
-  "version": "0.2.0",
+  "name": "wear-a-hat",
+  "version": "0.1.0",
   "private": true,
   "description": "",
   "main": "built/server.js",
@@ -15,13 +15,13 @@
     "node"
   ],
   "engines": {
-    "node": "=11.3.0",
-    "npm": "=6.11.3"
+    "node": ">=8.12.0",
+    "npm": ">=6.4.1"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "clean": "tsc --build --clean",
-    "build": "tsc --build",
+    "build": "tsc --build && eslint --ext .ts src",
     "build-only": "tsc --build",
     "build-watch": "tsc --build -w",
     "lint": "eslint --ext .ts src",
@@ -34,7 +34,8 @@
     "@typescript-eslint/eslint-plugin": "^2.17.0",
     "@typescript-eslint/parser": "^2.17.0",
     "eslint": "^6.8.0",
-    "nodemon": "^2.0.2"
+    "nodemon": "^2.0.2",
+    "typescript": "^3.8.3"
   },
   "dependencies": {
     "@microsoft/mixed-reality-extension-sdk": "^0.20.0",
@@ -42,6 +43,6 @@
     "@types/node": "^10.3.1",
     "concurrently": "^5.1.0",
     "dotenv": "^6.2.0",
-    "typescript": "^3.7.5"
+    "firebase-admin": "^10.0.1"
   }
 }

@@ -3,7 +3,13 @@
 # https://docs.microsoft.com/azure/devops/pipelines/languages/docker
 
 trigger:
-- master
+  batch: "true"
+  branches:
+    include:
+      - master
+  paths:
+    include:
+      - samples/wear-a-hat/*
 
 resources:
 - repo: self
@@ -11,9 +17,9 @@ resources:
 variables:
   # Container registry service connection established during pipeline creation
   dockerRegistryServiceConnection: '4e58cb86-5184-40de-b14b-ac7156de5891'
-  imageRepository: 'helmets-mre'
+  imageRepository: 'mrewearahatf2ab'
   containerRegistry: 'mreregistry.azurecr.io'
-  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  dockerfilePath: '$(Build.SourcesDirectory)/samples/wear-a-hat/Dockerfile'
   tag: '$(Build.SourceVersion)'
   
   # Agent VM image name
