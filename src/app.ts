@@ -44,6 +44,8 @@ type HatDatabase = {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const HatDatabase: HatDatabase = require('../public/hats.json');
 
+const CLEAR_BUTTON_RESOURCE_ID = "artifact:1150513214480450500";
+
 /**
  * WearAHat Application - Showcasing avatar attachments.
  */
@@ -150,10 +152,104 @@ export default class WearAHat {
 						return;
 					}
 					console.log(`Showing wearables for the user: ${user.id} (${user.name})`);
-					this.showHatMenu(user);
+					this.showHorizontalHatMenu(user);
 				// eslint-disable-next-line @typescript-eslint/unbound-method
 				}).catch(console.error);
 			});
+	}
+
+	/**
+	 * Show a menu of hat selections.
+	 */
+	private showHorizontalHatMenu(user: MRE.User) {
+		// a menu is already opened. Just close it.
+		if (this.openedMenus.has(user.id)) {
+			return;
+		}
+
+		// Create a parent object for all the menu items.
+		const menu = MRE.Actor.Create(this.context, {});
+		let x = 1;
+
+		// Loop over the hat database, creating a menu item for each entry.
+		for (const hatId of Object.keys(HatDatabase)) {
+			const hatRecord = HatDatabase[hatId];
+
+			if (!hatRecord.resourceName) {
+				// If the user selected 'none', then render close button.
+				MRE.Actor.CreateFromLibrary(this.context, {
+					resourceId: CLEAR_BUTTON_RESOURCE_ID,
+					actor: {
+						parentId: menu.id,
+						name: hatId,
+						transform: {
+							local: { position: { x, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }
+						}
+					}
+				});
+			} else {
+				MRE.Actor.CreateFromPrefab(this.context, {
+					prefab: this.prefabs[hatId],
+					actor: {
+						parentId: menu.id,
+						name: hatId,
+						transform: {
+							local: {
+								position: { x, y: 0, z: 0 },
+								rotation: MRE.Quaternion.FromEulerAngles(
+									hatRecord.rotation.x * MRE.DegreesToRadians,
+									hatRecord.rotation.y * MRE.DegreesToRadians,
+									hatRecord.rotation.z * MRE.DegreesToRadians),
+								scale: hatRecord.scale,
+							}
+						},
+					}
+				})
+			}
+
+			// Create an invisible cube with a collider
+			const button = MRE.Actor.CreatePrimitive(this.assets, {
+				definition: {
+					shape: MRE.PrimitiveShape.Box,
+					dimensions: { x: 0.4, y: 0.4, z: 0.4 } // make sure there's a gap
+				},
+				addCollider: true,
+				actor: {
+					parentId: menu.id,
+					name: `${hatId} collider`,
+					transform: {
+						local: {
+							position: { x, y: 0, z: 0 },
+							scale: { x: 1, y: 1, z: 1 },
+						}
+					},
+					appearance: {
+						enabled: false
+					}
+				}
+			});
+
+			// Set a click handler on the button.
+			button.setBehavior(MRE.ButtonBehavior)
+			.onClick(clickedUser => {
+				userManager.isUserPermitted(clickedUser?.id, clickedUser?.name).then((permitted) => {
+					if (!permitted) {
+						console.log(`User: ${clickedUser.id} (${clickedUser.name}) is not permitted to wear a hat`);
+						// eslint-disable-next-line @typescript-eslint/unbound-method
+						userManager.insertUnauthorizedUser(clickedUser?.id, clickedUser?.name).catch(console.error);
+						return;
+					}
+					console.log(`Wearing a hat (${hatId}) for the user: ${clickedUser.id} (${clickedUser.name})`);
+
+					this.wearHat(hatId, clickedUser.id);
+				// eslint-disable-next-line @typescript-eslint/unbound-method
+				}).catch(console.error);
+			});
+
+			x = x + 1;
+		}
+
+		this.openedMenus.set(user.id, menu);
 	}
 
 	/**
