@@ -160,6 +160,11 @@ export default class WearAHat {
 	 * Show a menu of hat selections.
 	 */
 	private showHatMenu(user: MRE.User) {
+		// a menu is already opened. Just close it.
+		if (this.openedMenus.has(user.id)) {
+			return;
+		}
+
 		// Create a parent object for all the menu items.
 		const menu = MRE.Actor.Create(this.context, {});
 		let y = 0.3;
@@ -280,87 +285,6 @@ export default class WearAHat {
 
 		this.openedMenus.set(user.id, menu);
 	}
-
-	// /**
-	//  * Show a menu of hat selections.
-	//  */
-	// private showHatMenu(user: MRE.User) {
-	// 	// Create a parent object for all the menu items.
-	// 	const menu = MRE.Actor.Create(this.context, {});
-	// 	let y = 0.3;
-
-	// 	// Create menu button
-	// 	const buttonMesh = this.assets.createBoxMesh('button', 0.3, 0.3, 0.01);
-
-	// 	// Loop over the hat database, creating a menu item for each entry.
-	// 	for (const hatId of Object.keys(HatDatabase)) {
-	// 		// Create a clickable button.
-	// 		const button = MRE.Actor.Create(this.context, {
-	// 			actor: {
-	// 				parentId: menu.id,
-	// 				name: hatId,
-	// 				appearance: { meshId: buttonMesh.id },
-	// 				collider: { geometry: { shape: MRE.ColliderType.Auto } },
-	// 				transform: {
-	// 					local: { position: { x: 0, y, z: 0 } }
-	// 				}
-	// 			}
-	// 		});
-
-	// 		// Set a click handler on the button.
-	// 		button.setBehavior(MRE.ButtonBehavior)
-	// 			.onClick(clickedUser => {
-	// 				userManager.isUserPermitted(clickedUser?.id, clickedUser?.name).then((permitted) => {
-	// 					if (!permitted) {
-	// 						console.log(`User: ${clickedUser.id} (${clickedUser.name}) is not permitted to wear a hat`);
-	// 						// eslint-disable-next-line @typescript-eslint/unbound-method
-	// 						userManager.insertUnauthorizedUser(clickedUser?.id, clickedUser?.name).catch(console.error);
-	// 						return;
-	// 					}
-	// 					console.log(`Wearing a hat for the user: ${clickedUser.id} (${clickedUser.name})`);
-
-	// 					this.wearHat(hatId, clickedUser.id);
-	// 				// eslint-disable-next-line @typescript-eslint/unbound-method
-	// 				}).catch(console.error);
-	// 			});
-
-	// 		// Create a label for the menu entry.
-	// 		MRE.Actor.Create(this.context, {
-	// 			actor: {
-	// 				parentId: menu.id,
-	// 				name: 'label',
-	// 				text: {
-	// 					contents: HatDatabase[hatId].displayName,
-	// 					height: 0.5,
-	// 					anchor: MRE.TextAnchorLocation.MiddleLeft
-	// 				},
-	// 				transform: {
-	// 					local: { position: { x: 0.5, y, z: 0 } }
-	// 				}
-	// 			}
-	// 		});
-	// 		y = y + 0.5;
-	// 	}
-
-	// 	// Create a label for the menu title.
-	// 	MRE.Actor.Create(this.context, {
-	// 		actor: {
-	// 			parentId: menu.id,
-	// 			name: 'label',
-	// 			text: {
-	// 				contents: ''.padStart(8, ' ') + "Wear a Hat",
-	// 				height: 0.8,
-	// 				anchor: MRE.TextAnchorLocation.MiddleCenter,
-	// 				color: MRE.Color3.Yellow()
-	// 			},
-	// 			transform: {
-	// 				local: { position: { x: 0.5, y: y + 0.25, z: 0 } }
-	// 			}
-	// 		}
-	// 	});
-
-	// 	this.openedMenus.set(user.id, menu);
-	// }
 
 	/**
 	 * Preload all hat resources. This makes instantiating them faster and more efficient.
