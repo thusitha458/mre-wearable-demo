@@ -179,8 +179,11 @@ export default class WearAnItem {
 			}
 		});
 
+		console.log('Showing logo button');
+
 		logoButton.setBehavior(MRE.ButtonBehavior)
 			.onClick(user => {
+				console.log('Clicked');
 				if (this.openedMenus.has(user.id)) {
 					this.openedMenus.get(user.id).destroy();
 					this.openedMenus.delete(user.id);
