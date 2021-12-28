@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 /* eslint-disable no-console */
 /*!
  * Copyright (c) Microsoft Corporation. All rights reserved.
@@ -173,7 +174,7 @@ export default class WearAnItem {
 				parentId: menu.id,
 				name: 'logo-button',
 				appearance: { meshId: buttonMesh.id },
-				// collider: { geometry: { shape: MRE.ColliderType.Auto } },
+				collider: { enabled: true, geometry: { shape: MRE.ColliderType.Auto } },
 				transform: {
 					local: { position: { x: 0, y: 0, z: 0 } }
 				}
