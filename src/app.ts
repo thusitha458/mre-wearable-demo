@@ -172,7 +172,7 @@ export default class WearAnItem {
 				parentId: menu.id,
 				name: 'logo-button',
 				appearance: { meshId: buttonMesh.id },
-				collider: { geometry: { shape: MRE.ColliderType.Auto } },
+				collider: { geometry: { shape: MRE.ColliderType.Box } },
 				transform: {
 					local: { position: { x: 0, y: 0, z: 0 } }
 				}
