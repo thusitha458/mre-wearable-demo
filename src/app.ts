@@ -281,7 +281,7 @@ export default class WearAnItem {
 			// Set a click handler on the button.
 			button.setBehavior(MRE.ButtonBehavior)
 			.onClick(clickedUser => {
-				userManager.isUserPermitted(this.currentAppId, user?.id, user?.name).then((permissionStatus) => {
+				userManager.isUserPermitted(this.currentAppId, clickedUser?.id, clickedUser?.name).then((permissionStatus) => {
 					const userName = `${clickedUser.id} (${clickedUser.name})`;
 					if (!permissionStatus?.permitted || (itemId !== CLEAR_BUTTON_ID && !permissionStatus?.permittedResources?.includes(itemRecord?.resourceId))) {
 						console.log(`User: ${userName}) is not permitted to wear item ${itemId}`);
