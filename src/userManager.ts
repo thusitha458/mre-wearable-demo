@@ -4,13 +4,9 @@ import { Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { cert, initializeApp } from 'firebase-admin/app';
 
 import { Guid } from '@microsoft/mixed-reality-extension-sdk';
+import { PermissionStatus } from './types';
 import { ServiceAccount } from 'firebase-admin';
 import serviceAccount from './esalademo-firebase-adminsdk-xn3iv-02f56257c9.json';
-
-interface PermissionStatus {
-	permitted: boolean;
-	permittedResources: string[];
-}
 
 initializeApp({
 	credential: cert(serviceAccount as ServiceAccount),
@@ -87,4 +83,4 @@ class UserManager {
 	}
 }
 
-export default new UserManager();
+export default UserManager;

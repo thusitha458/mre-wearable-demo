@@ -7,7 +7,9 @@
 
 import * as MRE from '@microsoft/mixed-reality-extension-sdk';
 
-import userManager from './userManager';
+import GroupMaskManager from './groupMaskManager';
+import { PermissionStatus } from './types';
+import UserManager from './userManager';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const fetch = require('node-fetch');
@@ -74,12 +76,18 @@ export default class WearAnItem {
 		controls,
 	);
 
+	private readonly userManager: UserManager;
+	private readonly groupMaskManager: GroupMaskManager;
+
 	/**
 	 * Constructs a new instance of this class.
 	 * @param context The MRE SDK context.
 	 * @param baseUrl The baseUrl to this project's `./public` folder.
 	 */
 	constructor(private context: MRE.Context, private params: MRE.ParameterSet) {
+		this.userManager = new UserManager();
+		this.groupMaskManager = new GroupMaskManager(context);
+		
 		this.assets = new MRE.AssetContainer(context);
 		this.currentAppId = params?.app_id && Array.isArray(params?.app_id) ?
 			params?.app_id?.[0] : (params?.app_id ? params?.app_id as string : DEFAULT_APP_ID);
@@ -161,6 +169,7 @@ export default class WearAnItem {
 		// orphaned in the world.
 		this.removeItemFromUser(user);
 		this.closeOpenedMenus(user);
+		this.removeGroups(user);
 	}
 
 	private showLogoButton(): void {
@@ -184,15 +193,16 @@ export default class WearAnItem {
 		logoButton.setBehavior(MRE.ButtonBehavior)
 			.onClick(user => {
 				if (this.openedMenus.has(user.id)) {
-					this.openedMenus.get(user.id).destroy();
-					this.openedMenus.delete(user.id);
+					console.log(`Closing the menu for user: ${user.id} (${user.name})`);
+					this.closeOpenedMenus(user);
+					this.removeGroups(user);
 					return;
 				}
-				userManager.isUserPermitted(this.currentAppId, user?.id, user?.name).then((permissionStatus) => {
+				this.userManager.isUserPermitted(this.currentAppId, user?.id, user?.name).then((permissionStatus: PermissionStatus) => {
 					if (!permissionStatus?.permitted || !permissionStatus?.permittedResources?.length) {
 						console.log(`User: ${user.id} (${user.name}) is not permitted to see the items`);
 						// eslint-disable-next-line max-len
-						userManager.insertUnauthorizedUser(this.currentAppId, user?.id, user?.name).catch((error) => console.error(error));
+						this.userManager.insertUnauthorizedUser(this.currentAppId, user?.id, user?.name).catch((error: any) => console.error(error));
 						return;
 					}
 					console.log(`Showing items for the user: ${user.id} (${user.name})`);
@@ -208,8 +218,21 @@ export default class WearAnItem {
 			return;
 		}
 
+		if (user) {
+			this.groupMaskManager.createGroupMaskForUser(user);
+			user.groups.clear();
+			user.groups.add(this.groupMaskManager.getGroupMaskTagForUser(user));
+		}
+
 		// Create a parent object for all the menu items.
-		const menu = MRE.Actor.Create(this.context, {});
+		const menu = MRE.Actor.Create(this.context, {
+			actor: {
+				appearance: {
+					enabled: this.groupMaskManager.getGroupMaskForUser(user) || false,
+				},
+			}
+		});
+		
 		let x = 1;
 
 		// Loop over the item database, creating a menu item for each entry.
@@ -281,11 +304,11 @@ export default class WearAnItem {
 			// Set a click handler on the button.
 			button.setBehavior(MRE.ButtonBehavior)
 			.onClick(clickedUser => {
-				userManager.isUserPermitted(this.currentAppId, clickedUser?.id, clickedUser?.name).then((permissionStatus) => {
+				this.userManager.isUserPermitted(this.currentAppId, clickedUser?.id, clickedUser?.name).then((permissionStatus: PermissionStatus) => {
 					const userName = `${clickedUser.id} (${clickedUser.name})`;
 					if (!permissionStatus?.permitted || (itemId !== CLEAR_BUTTON_ID && !permissionStatus?.permittedResources?.includes(itemRecord?.resourceId))) {
 						console.log(`User: ${userName}) is not permitted to wear item ${itemId}`);
-						userManager
+						this.userManager
 							.insertUnauthorizedUser(this.currentAppId, clickedUser?.id, clickedUser?.name)
 							// eslint-disable-next-line @typescript-eslint/unbound-method
 							.catch(console.error);
@@ -343,7 +366,14 @@ export default class WearAnItem {
 	}
 
 	private closeOpenedMenus(user: MRE.User) {
-		if (this.openedMenus.has(user.id)) { this.openedMenus.get(user.id).destroy(); }
+		if (this.openedMenus.has(user.id)) {
+			this.openedMenus.get(user.id).destroy();
+		}
 		this.openedMenus.delete(user.id);
+	}
+
+	private removeGroups(user: MRE.User): void {
+		this.groupMaskManager.removeGroupMaskForUser(user);
+		user.groups.clear();
 	}
 }
