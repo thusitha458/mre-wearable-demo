@@ -188,21 +188,21 @@ export default class WearAnItem {
 					this.openedMenus.delete(user.id);
 					return;
 				}
-				userManager.isUserPermitted(this.currentAppId, user?.id, user?.name).then((permitted) => {
-					if (!permitted) {
+				userManager.isUserPermitted(this.currentAppId, user?.id, user?.name).then((permissionStatus) => {
+					if (!permissionStatus?.permitted || !permissionStatus?.permittedResources?.length) {
 						console.log(`User: ${user.id} (${user.name}) is not permitted to see the items`);
 						// eslint-disable-next-line max-len
 						userManager.insertUnauthorizedUser(this.currentAppId, user?.id, user?.name).catch((error) => console.error(error));
 						return;
 					}
 					console.log(`Showing items for the user: ${user.id} (${user.name})`);
-					this.showHorizontalItemMenu(user);
+					this.showHorizontalItemMenu(user, permissionStatus?.permittedResources || []);
 				// eslint-disable-next-line @typescript-eslint/unbound-method
 				}).catch(console.error);
 			});
 	}
 
-	private showHorizontalItemMenu(user?: MRE.User) {
+	private showHorizontalItemMenu(user?: MRE.User, permittedResources?: string[]) {
 		// a menu is already opened. Just close it.
 		if (this.openedMenus.has(user.id)) {
 			return;
@@ -229,6 +229,10 @@ export default class WearAnItem {
 					}
 				});
 			} else {
+				if (!permittedResources?.includes(itemRecord?.resourceId)) {
+					continue;
+				}
+
 				MRE.Actor.CreateFromLibrary(this.context, {
 					resourceId: itemRecord?.resourceId,
 					actor: {
@@ -277,9 +281,9 @@ export default class WearAnItem {
 			// Set a click handler on the button.
 			button.setBehavior(MRE.ButtonBehavior)
 			.onClick(clickedUser => {
-				userManager.isUserPermitted(this.currentAppId, user?.id, user?.name).then((permitted) => {
+				userManager.isUserPermitted(this.currentAppId, user?.id, user?.name).then((permissionStatus) => {
 					const userName = `${clickedUser.id} (${clickedUser.name})`;
-					if (!permitted) {
+					if (!permissionStatus?.permitted || !permissionStatus?.permittedResources?.includes(itemRecord?.resourceId)) {
 						console.log(`User: ${userName}) is not permitted to wear item ${itemId}`);
 						userManager
 							.insertUnauthorizedUser(this.currentAppId, clickedUser?.id, clickedUser?.name)
