@@ -65,8 +65,6 @@ export default class WearAnItem {
 	private attachedItems = new Map<MRE.Guid, MRE.Actor>();
 	private openedMenus = new Map<MRE.Guid, MRE.Actor>();
 
-	private cubeData: MRE.Asset[];
-
 	// Load the database of items.
 	private itemDatabase: ItemDatabase = Object.assign(
 		{},
@@ -150,8 +148,6 @@ export default class WearAnItem {
 				}, {} as Record<string, ItemDescriptor>);
 		}
 
-		this.cubeData = await this.assets.loadGltf('altspace-cube.glb', "box");
-
 		return data;
 	}
 
@@ -170,37 +166,19 @@ export default class WearAnItem {
 		// Create a parent object for all the menu items.
 		const menu = MRE.Actor.Create(this.context, {});
 
-		// spawn a copy of the glTF model
-		const logoButton = MRE.Actor.CreateFromPrefab(this.context, {
-			// using the data we loaded earlier
-			firstPrefabFrom: this.cubeData,
-			// Also apply the following generic actor properties.
+		// Create menu button
+		const buttonMesh = this.assets.createBoxMesh('button', 0.1, 0.1, 0.1);
+		const logoButton = MRE.Actor.Create(this.context, {
 			actor: {
-				name: 'Altspace Cube',
-				// Parent the glTF model to the text actor, so the transform is relative to the text
-				collider: { geometry: { shape: MRE.ColliderType.Auto } },
 				parentId: menu.id,
+				name: 'logo-button',
+				appearance: { meshId: buttonMesh.id },
+				// collider: { geometry: { shape: MRE.ColliderType.Auto } },
 				transform: {
-					local: {
-						position: { x: 0, y: -1, z: 0 },
-						scale: { x: 0.4, y: 0.4, z: 0.4 }
-					}
+					local: { position: { x: 0, y: 0, z: 0 } }
 				}
 			}
 		});
-		// // Create menu button
-		// const buttonMesh = this.assets.createBoxMesh('button', 0.1, 0.1, 0.1);
-		// const logoButton = MRE.Actor.Create(this.context, {
-		// 	actor: {
-		// 		parentId: menu.id,
-		// 		name: 'logo-button',
-		// 		appearance: { meshId: buttonMesh.id },
-		// 		collider: { geometry: { shape: MRE.ColliderType.Auto } },
-		// 		transform: {
-		// 			local: { position: { x: 0, y: 0, z: 0 } }
-		// 		}
-		// 	}
-		// });
 
 		logoButton.setBehavior(MRE.ButtonBehavior)
 			.onClick(user => {
