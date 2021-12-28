@@ -25,20 +25,27 @@ const UNAUTHORIZED_USERS = "unauthorized-users";
 
 // properties
 const PROPERTY_TO_MATCH = "propertyToMatch";
+const APP_ID = "appId";
 
 class UserManager {
-	async isUserPermitted(id: Guid, name: string): Promise<boolean> {
-		let matchProperty: MatchProperty = MatchProperty.ID;
+	private matchProperty: MatchProperty;
 
-		const [matchPropertyDoc, permittedUsersSnapshot] = 
-            await Promise.all([
-            	db.collection(SETTINGS).doc(PROPERTY_TO_MATCH).get(), 
-            	db.collection(PERMITTED_USERS).get(),
-            ]);
+	constructor() {
+		// eslint-disable-next-line no-console
+		this.initializeSettings().catch((error) => console.error(error));
+	}
 
+	private initializeSettings = async (): Promise<void> => {
+		const matchPropertyDoc = await db.collection(SETTINGS).doc(PROPERTY_TO_MATCH).get();
 		if (matchPropertyDoc?.exists) {
-			matchProperty = (matchPropertyDoc?.data()?.value as MatchProperty) || MatchProperty.ID;
+			this.matchProperty = (matchPropertyDoc?.data()?.value as MatchProperty) || MatchProperty.NAME;
 		}
+	}
+
+	async isUserPermitted(appId: string, id: Guid, name: string): Promise<boolean> {
+
+		const permittedUsersSnapshot = 
+            await db.collection(PERMITTED_USERS).where(APP_ID, "==", appId).get();
 
 		let foundId = false;
 		let foundName = false;
@@ -51,14 +58,15 @@ class UserManager {
 				foundName = true;
 			}
 		});
-		return matchProperty === MatchProperty.ID ? foundId : foundName;
+		return this.matchProperty === MatchProperty.ID ? foundId : foundName;
 	}
 
-	async insertUnauthorizedUser(id: Guid, name: string): Promise<void> {
+	async insertUnauthorizedUser(appId: string, id: Guid, name: string): Promise<void> {
 		await db.collection(UNAUTHORIZED_USERS).add({
 			id: id as unknown as string,
 			name,
 			timestamp: Timestamp.fromDate(new Date()),
+			appId,
 		});
 	}
 }

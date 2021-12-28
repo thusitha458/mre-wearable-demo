@@ -8,69 +8,90 @@ import * as MRE from '@microsoft/mixed-reality-extension-sdk';
 
 import userManager from './userManager';
 
-// const validUserIds: MRE.Guid[] = ["0832966e-9434-a36c-59e0-aac86eb6f54b" as unknown as MRE.Guid];
-
-/**
- * The structure of a hat entry in the hat database.
- */
-type HatDescriptor = {
-	displayName: string;
-	resourceName: string;
-	scale: {
-		x: number;
-		y: number;
-		z: number;
-	};
-	rotation: {
-		x: number;
-		y: number;
-		z: number;
-	};
-	position: {
-		x: number;
-		y: number;
-		z: number;
-	};
-};
-
-/**
- * The structure of the hat database.
- */
-type HatDatabase = {
-	[key: string]: HatDescriptor;
-};
-
-// Load the database of hats.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const HatDatabase: HatDatabase = require('../public/hats.json');
+const fetch = require('node-fetch');
 
+const CLEAR_BUTTON_ID = "__CLEAR_BUTTON__";
 const CLEAR_BUTTON_RESOURCE_ID = "artifact:1150513214480450500";
 
-/**
- * WearAHat Application - Showcasing avatar attachments.
- */
-export default class WearAHat {
-	// Container for preloaded hat prefabs.
+const DEFAULT_APP_ID = "__DEFAULT_APP__";
+
+const handleNameConflictsInContentPacks = true;
+
+type ItemDescriptor = {
+	resourceId: string;
+	scale?: {
+		x: number;
+		y: number;
+		z: number;
+	};
+	rotation?: {
+		x: number;
+		y: number;
+		z: number;
+	};
+	position?: {
+		x: number;
+		y: number;
+		z: number;
+	};
+	menuScale?: {
+		x: number;
+		y: number;
+		z: number;
+	};
+	menuRotation?: {
+		x: number;
+		y: number;
+		z: number;
+	};
+	menuPosition?: {
+		x: number;
+		y: number;
+		z: number;
+	};
+	attachPoint?: MRE.AttachPoint;
+};
+
+type ItemDatabase = Record<string, ItemDescriptor>;
+
+const controls: Record<string, ItemDescriptor> = { [CLEAR_BUTTON_ID]: { resourceId: CLEAR_BUTTON_RESOURCE_ID }};
+
+export default class WearAnItem {
+	private appId: string;
 	private assets: MRE.AssetContainer;
-	private prefabs: { [key: string]: MRE.Prefab } = {};
-	// Container for instantiated hats.
-	private attachedHats = new Map<MRE.Guid, MRE.Actor>();
+	private contentPacks: string[];
+	// Container for instantiated items.
+	private attachedItems = new Map<MRE.Guid, MRE.Actor>();
 	private openedMenus = new Map<MRE.Guid, MRE.Actor>();
+
+	// Load the database of items.
+	private itemDatabase: ItemDatabase = Object.assign(
+		{},
+		// eslint-disable-next-line @typescript-eslint/no-var-requires
+		require('../public/default-content-pack.json'),
+		controls,
+	);
 
 	/**
 	 * Constructs a new instance of this class.
 	 * @param context The MRE SDK context.
 	 * @param baseUrl The baseUrl to this project's `./public` folder.
 	 */
-	constructor(private context: MRE.Context) {
+	constructor(private context: MRE.Context, private params: MRE.ParameterSet) {
 		this.assets = new MRE.AssetContainer(context);
+		this.appId = params?.app_id && Array.isArray(params?.app_id) ?
+			params?.app_id?.[0] : (params?.app_id ? params?.app_id as string : DEFAULT_APP_ID);
+		this.contentPacks = params?.content_packs && Array.isArray(params?.content_packs) ?
+			params?.content_packs : (params?.content_packs ? [params?.content_packs] as string[] : []);
+		
 		// Hook the context events we're interested in.
 		this.context.onStarted(() => this.started());
 		this.context.onUserLeft(user => this.userLeft(user));
 	}
 
 	/**
-	 * Called when a Hats application session starts up.
+	 * Called when an application session starts up.
 	 */
 	private async started() {
 		// Check whether code is running in a debuggable watched filesystem
@@ -102,10 +123,31 @@ export default class WearAHat {
 	// use () => {} syntax here to get proper scope binding when called via setTimeout()
 	// if async is required, next line becomes private startedImpl = async () => {
 	private startedImpl = async () => {
-		// Preload all the hat models.
-		await this.preloadHats();
-		// Show the hat menu.
+		await this.populateDatabase();
+		// Show the logo button which opens the menu.
 		this.showLogoButton();
+	}
+
+	private async populateDatabase(): Promise<void> {
+		if (this.contentPacks.length > 0) {
+			const contentPackData = await Promise.all(this.contentPacks.map(this.loadContentPack));
+			this.itemDatabase = Object.assign({}, ...[...contentPackData, controls]);
+		}
+	}
+
+	private loadContentPack = async (contentPackId: string): Promise<Record<string, ItemDescriptor>> => {
+		const response = await fetch(`https://account.altvr.com/api/content_packs/${contentPackId}/raw.json`);
+		const data = await response.json() as Record<string, ItemDescriptor>;
+
+		if (handleNameConflictsInContentPacks) {
+			return Object.keys(data)
+				.reduce((updated, key) => {
+					updated[`${contentPackId}_${key}`] = data[key];
+					return updated;
+				}, {} as Record<string, ItemDescriptor>);
+		}
+
+		return data;
 	}
 
 	/**
@@ -113,9 +155,9 @@ export default class WearAHat {
 	 * @param user The user that left the building.
 	 */
 	private userLeft(user: MRE.User) {
-		// If the user was wearing a hat, destroy it. Otherwise it would be
+		// If the user was wearing an item, destroy it. Otherwise it would be
 		// orphaned in the world.
-		this.removeHats(user);
+		this.removeItemFromUser(user);
 		this.closeOpenedMenus(user);
 	}
 
@@ -144,24 +186,21 @@ export default class WearAHat {
 					this.openedMenus.delete(user.id);
 					return;
 				}
-				userManager.isUserPermitted(user?.id, user?.name).then((permitted) => {
+				userManager.isUserPermitted(this.appId, user?.id, user?.name).then((permitted) => {
 					if (!permitted) {
-						console.log(`User: ${user.id} (${user.name}) is not permitted to see the wearables`);
+						console.log(`User: ${user.id} (${user.name}) is not permitted to see the items`);
 						// eslint-disable-next-line @typescript-eslint/unbound-method
-						userManager.insertUnauthorizedUser(user?.id, user?.name).catch(console.error);
+						userManager.insertUnauthorizedUser(this.appId, user?.id, user?.name).catch(console.error);
 						return;
 					}
-					console.log(`Showing wearables for the user: ${user.id} (${user.name})`);
-					this.showHorizontalHatMenu(user);
+					console.log(`Showing items for the user: ${user.id} (${user.name})`);
+					this.showHorizontalItemMenu(user);
 				// eslint-disable-next-line @typescript-eslint/unbound-method
 				}).catch(console.error);
 			});
 	}
 
-	/**
-	 * Show a menu of hat selections.
-	 */
-	private showHorizontalHatMenu(user: MRE.User) {
+	private showHorizontalItemMenu(user: MRE.User) {
 		// a menu is already opened. Just close it.
 		if (this.openedMenus.has(user.id)) {
 			return;
@@ -171,36 +210,40 @@ export default class WearAHat {
 		const menu = MRE.Actor.Create(this.context, {});
 		let x = 1;
 
-		// Loop over the hat database, creating a menu item for each entry.
-		for (const hatId of Object.keys(HatDatabase)) {
-			const hatRecord = HatDatabase[hatId];
+		// Loop over the item database, creating a menu item for each entry.
+		for (const itemId of Object.keys(this.itemDatabase)) {
+			const itemRecord = this.itemDatabase[itemId];
 
-			if (!hatRecord.resourceName) {
-				// If the user selected 'none', then render close button.
+			if (itemId === CLEAR_BUTTON_ID) {
+				// If the user selected 'CLEAR', then render clear button.
 				MRE.Actor.CreateFromLibrary(this.context, {
 					resourceId: CLEAR_BUTTON_RESOURCE_ID,
 					actor: {
 						parentId: menu.id,
-						name: hatId,
+						name: itemId,
 						transform: {
 							local: { position: { x, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }
 						}
 					}
 				});
 			} else {
-				MRE.Actor.CreateFromPrefab(this.context, {
-					prefab: this.prefabs[hatId],
+				MRE.Actor.CreateFromLibrary(this.context, {
+					resourceId: itemRecord?.resourceId,
 					actor: {
 						parentId: menu.id,
-						name: hatId,
+						name: itemId,
 						transform: {
 							local: {
-								position: { x, y: 0, z: 0 },
+								position: { 
+									x,
+									y: itemRecord?.menuPosition?.y || 0,
+									z: itemRecord?.menuPosition?.z || 0,
+								},
 								rotation: MRE.Quaternion.FromEulerAngles(
-									hatRecord.rotation.x * MRE.DegreesToRadians,
-									hatRecord.rotation.y * MRE.DegreesToRadians,
-									hatRecord.rotation.z * MRE.DegreesToRadians),
-								scale: hatRecord.scale,
+									(itemRecord?.menuRotation?.x || 0) * MRE.DegreesToRadians,
+									(itemRecord?.menuRotation?.y || 0) * MRE.DegreesToRadians,
+									(itemRecord?.menuRotation?.z || 0) * MRE.DegreesToRadians),
+								scale: itemRecord?.menuScale,
 							}
 						},
 					}
@@ -216,7 +259,7 @@ export default class WearAHat {
 				addCollider: true,
 				actor: {
 					parentId: menu.id,
-					name: `${hatId} collider`,
+					name: `${itemId} collider`,
 					transform: {
 						local: {
 							position: { x, y: 0, z: 0 },
@@ -232,18 +275,21 @@ export default class WearAHat {
 			// Set a click handler on the button.
 			button.setBehavior(MRE.ButtonBehavior)
 			.onClick(clickedUser => {
-				userManager.isUserPermitted(clickedUser?.id, clickedUser?.name).then((permitted) => {
+				userManager.isUserPermitted(this.appId, user?.id, user?.name).then((permitted) => {
+					const userName = `${clickedUser.id} (${clickedUser.name})`;
 					if (!permitted) {
-						console.log(`User: ${clickedUser.id} (${clickedUser.name}) is not permitted to wear a hat`);
-						// eslint-disable-next-line @typescript-eslint/unbound-method
-						userManager.insertUnauthorizedUser(clickedUser?.id, clickedUser?.name).catch(console.error);
+						console.log(`User: ${userName}) is not permitted to wear item ${itemId}`);
+						userManager
+							.insertUnauthorizedUser(this.appId, clickedUser?.id, clickedUser?.name)
+							// eslint-disable-next-line @typescript-eslint/unbound-method
+							.catch(console.error);
 						return;
 					}
-					console.log(`Wearing a hat (${hatId}) for the user: ${clickedUser.id} (${clickedUser.name})`);
-
-					this.wearHat(hatId, clickedUser.id);
+					console.log(`Permitting the request to wear item ${itemId} from the user: ${userName}`);
+					this.wearItem(itemId, clickedUser.id);
 				// eslint-disable-next-line @typescript-eslint/unbound-method
 				}).catch(console.error);
+				
 			});
 
 			x = x + 1;
@@ -252,200 +298,42 @@ export default class WearAHat {
 		this.openedMenus.set(user.id, menu);
 	}
 
-	/**
-	 * Show a menu of hat selections.
-	 */
-	private showHatMenu(user: MRE.User) {
-		// a menu is already opened. Just close it.
-		if (this.openedMenus.has(user.id)) {
+	private wearItem(itemId: string, userId: MRE.Guid) {
+		// If the user is wearing an item, destroy it.
+		this.removeItemFromUser(this.context.user(userId));
+
+		const itemRecord = this.itemDatabase[itemId];
+
+		// If the user selected 'CLEAR', then early out.
+		if (itemId === CLEAR_BUTTON_ID) {
 			return;
 		}
 
-		// Create a parent object for all the menu items.
-		const menu = MRE.Actor.Create(this.context, {});
-		let y = 0.3;
-
-		// Loop over the hat database, creating a menu item for each entry.
-		for (const hatId of Object.keys(HatDatabase)) {
-			const hatRecord = HatDatabase[hatId];
-
-			let button: MRE.Actor;
-			
-			if (!hatRecord.resourceName) {
-				// If the user selected 'none', then early out.
-				const buttonMesh = this.assets.createBoxMesh('button', 0.3, 0.3, 0.01);
-				// Create a clickable button.
-				button = MRE.Actor.Create(this.context, {
-					actor: {
-						parentId: menu.id,
-						name: hatId,
-						appearance: { meshId: buttonMesh.id },
-						collider: { geometry: { shape: MRE.ColliderType.Auto } },
-						transform: {
-							local: { position: { x: 0, y, z: 0 } }
-						}
-					}
-				});
-			} else {
-				MRE.Actor.CreateFromPrefab(this.context, {
-					prefab: this.prefabs[hatId],
-					actor: {
-						parentId: menu.id,
-						transform: {
-							local: {
-								position: { x: 0, y, z: 0 },
-								rotation: MRE.Quaternion.FromEulerAngles(
-									hatRecord.rotation.x * MRE.DegreesToRadians,
-									hatRecord.rotation.y * MRE.DegreesToRadians,
-									hatRecord.rotation.z * MRE.DegreesToRadians),
-								scale: hatRecord.scale,
-							}
-						},
-					}
-				})
-
-				// Create an invisible cube with a collider
-				button = MRE.Actor.CreatePrimitive(this.assets, {
-					definition: {
-						shape: MRE.PrimitiveShape.Box,
-						dimensions: { x: 0.4, y: 0.4, z: 0.4 } // make sure there's a gap
-					},
-					addCollider: true,
-					actor: {
-						parentId: menu.id,
-						name: hatId,
-						transform: {
-							local: {
-								position: { x: 0, y, z: 0 },
-								scale: { x: 1, y: 1, z: 1 },
-							}
-						},
-						appearance: {
-							enabled: false
-						}
-					}
-				});
-			}
-
-			// Set a click handler on the button.
-			button.setBehavior(MRE.ButtonBehavior)
-			.onClick(clickedUser => {
-				userManager.isUserPermitted(clickedUser?.id, clickedUser?.name).then((permitted) => {
-					if (!permitted) {
-						console.log(`User: ${clickedUser.id} (${clickedUser.name}) is not permitted to wear a hat`);
-						// eslint-disable-next-line @typescript-eslint/unbound-method
-						userManager.insertUnauthorizedUser(clickedUser?.id, clickedUser?.name).catch(console.error);
-						return;
-					}
-					console.log(`Wearing a hat (${hatId}) for the user: ${clickedUser.id} (${clickedUser.name})`);
-
-					this.wearHat(hatId, clickedUser.id);
-				// eslint-disable-next-line @typescript-eslint/unbound-method
-				}).catch(console.error);
-			});
-
-			// Create a label for the menu entry.
-			MRE.Actor.Create(this.context, {
-				actor: {
-					parentId: menu.id,
-					name: 'label',
-					text: {
-						contents: HatDatabase[hatId].displayName,
-						height: 0.5,
-						anchor: MRE.TextAnchorLocation.MiddleLeft
-					},
-					transform: {
-						local: { position: { x: 0.5, y, z: 0 } }
-					}
-				}
-			});
-			y = y + 0.5;
-		}
-
-		// Create a label for the menu title.
-		MRE.Actor.Create(this.context, {
-			actor: {
-				parentId: menu.id,
-				name: 'label',
-				text: {
-					contents: ''.padStart(8, ' ') + "Wear a Hat",
-					height: 0.8,
-					anchor: MRE.TextAnchorLocation.MiddleCenter,
-					color: MRE.Color3.Yellow()
-				},
-				transform: {
-					local: { position: { x: 0.5, y: y + 0.25, z: 0 } }
-				}
-			}
-		});
-
-		this.openedMenus.set(user.id, menu);
-	}
-
-	/**
-	 * Preload all hat resources. This makes instantiating them faster and more efficient.
-	 */
-	private preloadHats() {
-		// Loop over the hat database, preloading each hat resource.
-		// Return a promise of all the in-progress load promises. This
-		// allows the caller to wait until all hats are done preloading
-		// before continuing.
-		return Promise.all(
-			Object.keys(HatDatabase).map(hatId => {
-				const hatRecord = HatDatabase[hatId];
-				if (hatRecord.resourceName) {
-					return this.assets.loadGltf(hatRecord.resourceName)
-						.then(assets => {
-							this.prefabs[hatId] = assets.find(a => a.prefab !== null) as MRE.Prefab;
-						})
-						.catch(e => MRE.log.error("app", e));
-				} else {
-					return Promise.resolve();
-				}
-			}));
-	}
-
-	/**
-	 * Instantiate a hat and attach it to the avatar's head.
-	 * @param hatId The id of the hat in the hat database.
-	 * @param userId The id of the user we will attach the hat to.
-	 */
-	private wearHat(hatId: string, userId: MRE.Guid) {
-		// If the user is wearing a hat, destroy it.
-		this.removeHats(this.context.user(userId));
-
-		const hatRecord = HatDatabase[hatId];
-
-		// If the user selected 'none', then early out.
-		if (!hatRecord.resourceName) {
-			return;
-		}
-
-		// Create the hat model and attach it to the avatar's head.
-		this.attachedHats.set(userId, MRE.Actor.CreateFromPrefab(this.context, {
-			prefab: this.prefabs[hatId],
+		// Create the item model and attach it to the avatar.
+		this.attachedItems.set(userId, MRE.Actor.CreateFromLibrary(this.context, {
+			resourceId: itemRecord?.resourceId,
 			actor: {
 				transform: {
 					local: {
-						position: hatRecord.position,
+						position: itemRecord?.position,
 						rotation: MRE.Quaternion.FromEulerAngles(
-							hatRecord.rotation.x * MRE.DegreesToRadians,
-							hatRecord.rotation.y * MRE.DegreesToRadians,
-							hatRecord.rotation.z * MRE.DegreesToRadians),
-						scale: hatRecord.scale,
+							(itemRecord?.rotation?.x || 0) * MRE.DegreesToRadians,
+							(itemRecord?.rotation?.y || 0) * MRE.DegreesToRadians,
+							(itemRecord?.rotation?.z || 0) * MRE.DegreesToRadians),
+						scale: itemRecord?.scale,
 					}
 				},
 				attachment: {
-					attachPoint: 'head',
+					attachPoint: itemRecord?.attachPoint || 'head',
 					userId
 				}
 			}
 		}));
 	}
 
-	private removeHats(user: MRE.User) {
-		if (this.attachedHats.has(user.id)) { this.attachedHats.get(user.id).destroy(); }
-		this.attachedHats.delete(user.id);
+	private removeItemFromUser(user: MRE.User) {
+		if (this.attachedItems.has(user.id)) { this.attachedItems.get(user.id).destroy(); }
+		this.attachedItems.delete(user.id);
 	}
 
 	private closeOpenedMenus(user: MRE.User) {
