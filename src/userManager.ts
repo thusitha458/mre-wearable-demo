@@ -71,7 +71,9 @@ class UserManager {
 		
 		return {
 			permitted: this.matchProperty === MatchProperty.ID ? foundId : foundName,
-			permittedResources: this.matchProperty === MatchProperty.ID ? permittedResourcesForIdMatch : permittedResourcesForNameMatch,
+			permittedResources: this.matchProperty === MatchProperty.ID
+				? permittedResourcesForIdMatch
+				: permittedResourcesForNameMatch,
 		};
 	}
 
