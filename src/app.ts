@@ -58,7 +58,7 @@ type ItemDatabase = Record<string, ItemDescriptor>;
 const controls: Record<string, ItemDescriptor> = { [CLEAR_BUTTON_ID]: { resourceId: CLEAR_BUTTON_RESOURCE_ID }};
 
 export default class WearAnItem {
-	private appId: string;
+	private currentAppId: string;
 	private assets: MRE.AssetContainer;
 	private contentPacks: string[];
 	// Container for instantiated items.
@@ -80,8 +80,9 @@ export default class WearAnItem {
 	 */
 	constructor(private context: MRE.Context, private params: MRE.ParameterSet) {
 		this.assets = new MRE.AssetContainer(context);
-		this.appId = params?.app_id && Array.isArray(params?.app_id) ?
+		this.currentAppId = params?.app_id && Array.isArray(params?.app_id) ?
 			params?.app_id?.[0] : (params?.app_id ? params?.app_id as string : DEFAULT_APP_ID);
+
 		this.contentPacks = params?.content_packs && Array.isArray(params?.content_packs) ?
 			params?.content_packs : (params?.content_packs ? [params?.content_packs] as string[] : []);
 		
@@ -172,28 +173,25 @@ export default class WearAnItem {
 				parentId: menu.id,
 				name: 'logo-button',
 				appearance: { meshId: buttonMesh.id },
-				collider: { geometry: { shape: MRE.ColliderType.Box } },
+				collider: { geometry: { shape: MRE.ColliderType.Auto } },
 				transform: {
 					local: { position: { x: 0, y: 0, z: 0 } }
 				}
 			}
 		});
 
-		console.log('Showing logo button');
-
 		logoButton.setBehavior(MRE.ButtonBehavior)
 			.onClick(user => {
-				console.log('Clicked');
 				if (this.openedMenus.has(user.id)) {
 					this.openedMenus.get(user.id).destroy();
 					this.openedMenus.delete(user.id);
 					return;
 				}
-				userManager.isUserPermitted(this.appId, user?.id, user?.name).then((permitted) => {
+				userManager.isUserPermitted(this.currentAppId, user?.id, user?.name).then((permitted) => {
 					if (!permitted) {
 						console.log(`User: ${user.id} (${user.name}) is not permitted to see the items`);
-						// eslint-disable-next-line @typescript-eslint/unbound-method
-						userManager.insertUnauthorizedUser(this.appId, user?.id, user?.name).catch(console.error);
+						// eslint-disable-next-line max-len
+						userManager.insertUnauthorizedUser(this.currentAppId, user?.id, user?.name).catch((error) => console.error(error));
 						return;
 					}
 					console.log(`Showing items for the user: ${user.id} (${user.name})`);
@@ -203,7 +201,7 @@ export default class WearAnItem {
 			});
 	}
 
-	private showHorizontalItemMenu(user: MRE.User) {
+	private showHorizontalItemMenu(user?: MRE.User) {
 		// a menu is already opened. Just close it.
 		if (this.openedMenus.has(user.id)) {
 			return;
@@ -278,12 +276,12 @@ export default class WearAnItem {
 			// Set a click handler on the button.
 			button.setBehavior(MRE.ButtonBehavior)
 			.onClick(clickedUser => {
-				userManager.isUserPermitted(this.appId, user?.id, user?.name).then((permitted) => {
+				userManager.isUserPermitted(this.currentAppId, user?.id, user?.name).then((permitted) => {
 					const userName = `${clickedUser.id} (${clickedUser.name})`;
 					if (!permitted) {
 						console.log(`User: ${userName}) is not permitted to wear item ${itemId}`);
 						userManager
-							.insertUnauthorizedUser(this.appId, clickedUser?.id, clickedUser?.name)
+							.insertUnauthorizedUser(this.currentAppId, clickedUser?.id, clickedUser?.name)
 							// eslint-disable-next-line @typescript-eslint/unbound-method
 							.catch(console.error);
 						return;
