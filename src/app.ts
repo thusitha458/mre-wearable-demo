@@ -283,7 +283,7 @@ export default class WearAnItem {
 			.onClick(clickedUser => {
 				userManager.isUserPermitted(this.currentAppId, user?.id, user?.name).then((permissionStatus) => {
 					const userName = `${clickedUser.id} (${clickedUser.name})`;
-					if (!permissionStatus?.permitted || !permissionStatus?.permittedResources?.includes(itemRecord?.resourceId)) {
+					if (!permissionStatus?.permitted || (itemId !== CLEAR_BUTTON_ID && !permissionStatus?.permittedResources?.includes(itemRecord?.resourceId))) {
 						console.log(`User: ${userName}) is not permitted to wear item ${itemId}`);
 						userManager
 							.insertUnauthorizedUser(this.currentAppId, clickedUser?.id, clickedUser?.name)
