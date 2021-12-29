@@ -16,6 +16,7 @@ const fetch = require('node-fetch');
 
 const CLEAR_BUTTON_ID = "__CLEAR_BUTTON__";
 const CLEAR_BUTTON_RESOURCE_ID = "artifact:1150513214480450500";
+const LOGO_RESOURCE_ID = "artifact:1901563247505441007";
 
 const DEFAULT_APP_ID = "__DEFAULT_APP__";
 
@@ -177,16 +178,23 @@ export default class WearAnItem {
 		const menu = MRE.Actor.Create(this.context, {});
 
 		// Create menu button
-		const buttonMesh = this.assets.createBoxMesh('button', 0.1, 0.1, 0.1);
-		const logoButton = MRE.Actor.Create(this.context, {
+		const logoButton = MRE.Actor.CreateFromLibrary(this.context, {
+			resourceId: LOGO_RESOURCE_ID,
 			actor: {
 				parentId: menu.id,
 				name: 'logo-button',
-				appearance: { meshId: buttonMesh.id },
-				collider: { enabled: true, geometry: { shape: MRE.ColliderType.Auto } },
 				transform: {
-					local: { position: { x: 0, y: 0, z: 0 } }
-				}
+					local: {
+						position: { x: 0, y: 0, z: 0 },
+						rotation: MRE.Quaternion.FromEulerAngles(0, 180 * MRE.DegreesToRadians, 0),
+					},
+				},
+				collider: { 
+					enabled: true,
+					geometry: {
+						shape: MRE.ColliderType.Auto,
+					},
+				},
 			}
 		});
 
