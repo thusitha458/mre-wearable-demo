@@ -10,6 +10,7 @@ import * as MRE from '@microsoft/mixed-reality-extension-sdk';
 import GroupMaskManager from './groupMaskManager';
 import { PermissionStatus } from './types';
 import UserManager from './userManager';
+import { UserSyncFix } from './userSyncFix';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const fetch = require('node-fetch');
@@ -19,6 +20,7 @@ const CLEAR_BUTTON_RESOURCE_ID = "artifact:1150513214480450500";
 const LOGO_RESOURCE_ID = "artifact:1901563247505441007";
 
 const DEFAULT_APP_ID = "__DEFAULT_APP__";
+const MIN_SYNC_INTERVAL_MS = 5000;
 
 const handleNameConflictsInContentPacks = true;
 
@@ -79,6 +81,7 @@ export default class WearAnItem {
 
 	private readonly userManager: UserManager;
 	private readonly groupMaskManager: GroupMaskManager;
+	private readonly userSyncFix: UserSyncFix;
 
 	/**
 	 * Constructs a new instance of this class.
@@ -88,6 +91,7 @@ export default class WearAnItem {
 	constructor(private context: MRE.Context, private params: MRE.ParameterSet) {
 		this.userManager = new UserManager();
 		this.groupMaskManager = new GroupMaskManager(context);
+		this.userSyncFix = new UserSyncFix(MIN_SYNC_INTERVAL_MS);
 		
 		this.assets = new MRE.AssetContainer(context);
 		this.currentAppId = params?.app_id && Array.isArray(params?.app_id) ?
@@ -137,6 +141,8 @@ export default class WearAnItem {
 		await this.populateDatabase();
 		// Show the logo button which opens the menu.
 		this.showLogoButton();
+		// sync fix
+		this.userSyncFix.addSyncFunc(this.synchronizeAttachments);
 	}
 
 	private async populateDatabase(): Promise<void> {
@@ -160,6 +166,23 @@ export default class WearAnItem {
 
 		return data;
 	}
+
+	private synchronizeAttachments = (): void => {
+		// Loop through all values in the 'attachments' map
+		// The [key, value] syntax breaks each entry of the map into its key and
+		// value automatically.  In the case of 'attachments', the key is the
+		// Guid of the user and the value is the actor/attachment.
+		for (const [userId, attachment] of this.attachedItems) {
+			// Store the current attach point.
+			const attachPoint = attachment.attachment.attachPoint;
+
+			// Detach from the user
+			attachment.detach();
+
+			// Reattach to the user
+			attachment.attach(userId, attachPoint);
+		}
+	};
 
 	/**
 	 * Called when a user leaves the application (probably left the Altspace world where this app is running).
@@ -366,6 +389,9 @@ export default class WearAnItem {
 				}
 			}
 		}));
+
+		// let sync fix know that a user has joined
+		this.userSyncFix.userJoined();
 	}
 
 	private removeItemFromUser(user: MRE.User) {
