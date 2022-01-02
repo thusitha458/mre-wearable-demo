@@ -2,6 +2,8 @@
 
 import { Context, GroupMask, Guid, User } from "@microsoft/mixed-reality-extension-sdk";
 
+import { generateRandomString } from "./utils";
+
 class GroupMaskManager {
   private static readonly PREFIX = "USER_MASK_";
   private readonly randomPortion: string;
@@ -12,7 +14,7 @@ class GroupMaskManager {
   constructor(context: Context) {
   	this.context = context;
   	this.maskMap = new Map();
-  	this.randomPortion = this.generateRandomString(16);
+  	this.randomPortion = generateRandomString(16);
   }
 
   createGroupMaskForUser(user: User): GroupMask {
@@ -31,16 +33,6 @@ class GroupMaskManager {
 
   removeGroupMaskForUser(user: User): void {
   	this.maskMap.delete(user.id);
-  }
-
-  private generateRandomString(length: number): string {
-  	let result = '';
-  	const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  	const charactersLength = characters.length;
-  	for (let i = 0; i < length; i++) {
-  	    result += characters.charAt(Math.floor(Math.random() * charactersLength));
-  	}
-  	return result;
   }
 }
 

@@ -1,32 +1,15 @@
 /* eslint-disable no-mixed-spaces-and-tabs */
 
-import { Timestamp, getFirestore } from 'firebase-admin/firestore';
-import { cert, initializeApp } from 'firebase-admin/app';
+import db, { COLLECTIONS } from './firestoreConfig';
 
 import { Guid } from '@microsoft/mixed-reality-extension-sdk';
 import { PermissionStatus } from './types';
-import { ServiceAccount } from 'firebase-admin';
-import serviceAccount from './esalademo-firebase-adminsdk-xn3iv-02f56257c9.json';
-
-initializeApp({
-	credential: cert(serviceAccount as ServiceAccount),
-});
-
-const db = getFirestore();
+import { Timestamp } from 'firebase-admin/firestore';
 
 enum MatchProperty {
     ID = "id",
     NAME = "name",
 }
-
-// collections
-const SETTINGS = "settings";
-const PERMITTED_USERS = "permitted-users";
-const UNAUTHORIZED_USERS = "unauthorized-users";
-
-// properties
-const PROPERTY_TO_MATCH = "propertyToMatch";
-const APP_ID = "appId";
 
 class UserManager {
 	private matchProperty: MatchProperty;
@@ -37,7 +20,10 @@ class UserManager {
 	}
 
 	private initializeSettings = async (): Promise<void> => {
-		const matchPropertyDoc = await db.collection(SETTINGS).doc(PROPERTY_TO_MATCH).get();
+		const matchPropertyDoc = await db
+			.collection(COLLECTIONS.SETTINGS.name)
+			.doc(COLLECTIONS.SETTINGS.properties.PROPERTY_TO_MATCH.name)
+			.get();
 		if (matchPropertyDoc?.exists) {
 			this.matchProperty = (matchPropertyDoc?.data()?.value as MatchProperty) || MatchProperty.NAME;
 		}
@@ -46,7 +32,10 @@ class UserManager {
 	async isUserPermitted(appId: string, id: Guid, name: string): Promise<PermissionStatus> {
 
 		const permittedUsersSnapshot = 
-            await db.collection(PERMITTED_USERS).where(APP_ID, "==", appId).get();
+            await db
+				.collection(COLLECTIONS.PERMITTED_USERS.name)
+				.where(COLLECTIONS.PERMITTED_USERS.properties.APP_ID.name, "==", appId)
+				.get();
 
 		let foundId = false;
 		let foundName = false;
@@ -74,7 +63,7 @@ class UserManager {
 	}
 
 	async insertUnauthorizedUser(appId: string, id: Guid, name: string): Promise<void> {
-		await db.collection(UNAUTHORIZED_USERS).add({
+		await db.collection(COLLECTIONS.UNAUTHORIZED_USERS.name).add({
 			id: id as unknown as string,
 			name,
 			timestamp: Timestamp.fromDate(new Date()),

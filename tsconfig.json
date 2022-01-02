@@ -1,7 +1,7 @@
 {
   "include": [
     "./src",
-    "./src/esalademo-firebase-adminsdk-xn3iv-02f56257c9.json"
+    "./src/serviceAccount.json"
   ],
   "compilerOptions": {
     "outDir": "./built", /* Redirect output structure to the directory. */

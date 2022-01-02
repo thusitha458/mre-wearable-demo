@@ -7,10 +7,12 @@
 
 import * as MRE from '@microsoft/mixed-reality-extension-sdk';
 
+import AnalyticsManager from './analyticsManager';
 import GroupMaskManager from './groupMaskManager';
 import { PermissionStatus } from './types';
 import UserManager from './userManager';
 import { UserSyncFix } from './userSyncFix';
+import { generateRandomString } from './utils';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const fetch = require('node-fetch');
@@ -20,7 +22,9 @@ const CLEAR_BUTTON_RESOURCE_ID = "artifact:1150513214480450500";
 const LOGO_RESOURCE_ID = "artifact:1901563247505441007";
 
 const DEFAULT_APP_ID = "__DEFAULT_APP__";
+const DEFAULT_GROUP_ID = "__DEFAULT_GROUP__";
 const MIN_SYNC_INTERVAL_MS = 5000;
+const STATUS_REPORT_INTERVAL_MS = 10 * 60 * 1000; // 10 min
 
 const handleNameConflictsInContentPacks = true;
 
@@ -65,10 +69,12 @@ const controls: Record<string, ItemDescriptor> = { [CLEAR_BUTTON_ID]: { resource
 
 export default class WearAnItem {
 	private currentAppId: string;
+	private currentInstanceId: string;
+	private currentGroupId: string;
 	private assets: MRE.AssetContainer;
 	private contentPacks: string[];
 	// Container for instantiated items.
-	private attachedItems = new Map<MRE.Guid, MRE.Actor>();
+	private attachedItems = new Map<MRE.Guid, { userName?: string; attachment: MRE.Actor }>();
 	private openedMenus = new Map<MRE.Guid, MRE.Actor>();
 
 	// Load the database of items.
@@ -82,6 +88,7 @@ export default class WearAnItem {
 	private readonly userManager: UserManager;
 	private readonly groupMaskManager: GroupMaskManager;
 	private readonly userSyncFix: UserSyncFix;
+	private readonly analyticsManager: AnalyticsManager;
 
 	/**
 	 * Constructs a new instance of this class.
@@ -92,17 +99,48 @@ export default class WearAnItem {
 		this.userManager = new UserManager();
 		this.groupMaskManager = new GroupMaskManager(context);
 		this.userSyncFix = new UserSyncFix(MIN_SYNC_INTERVAL_MS);
+		this.analyticsManager = new AnalyticsManager();
 		
 		this.assets = new MRE.AssetContainer(context);
 		this.currentAppId = params?.app_id && Array.isArray(params?.app_id) ?
 			params?.app_id?.[0] : (params?.app_id ? params?.app_id as string : DEFAULT_APP_ID);
 
+		this.currentInstanceId = params?.instance_id && Array.isArray(params?.instance_id) ?
+			params?.instance_id?.[0] : (params?.instance_id ? params?.instance_id as string : generateRandomString(16));
+
+		this.currentGroupId = params?.group_id && Array.isArray(params?.group_id) ?
+			params?.group_id?.[0] : (params?.group_id ? params?.group_id as string : DEFAULT_GROUP_ID);
+
 		this.contentPacks = params?.content_packs && Array.isArray(params?.content_packs) ?
 			params?.content_packs : (params?.content_packs ? [params?.content_packs] as string[] : []);
+
+		const analyticsTask = setInterval(() => {
+			const attachedUsers: Array<{ id: MRE.Guid; name?: string; attachedActorId: MRE.Guid }> = [];
+			for (const [userId, attachmentInfo] of this.attachedItems) {
+				attachedUsers.push({
+					id: userId,
+					name: attachmentInfo?.userName,
+					attachedActorId: attachmentInfo?.attachment?.id,
+				});
+			}
+
+			this.analyticsManager.sendEvent({
+				type: "STATUS_REPORT",
+				identifier: this.currentInstanceId,
+				appId: this.currentAppId,
+				groupId: this.currentGroupId,
+				data: {
+					numAttachedUsers: this.attachedItems.size,
+					attachedUsers,
+					performanceStats: this.context.getStats(),
+				},
+			});
+		}, STATUS_REPORT_INTERVAL_MS);
 		
 		// Hook the context events we're interested in.
 		this.context.onStarted(() => this.started());
 		this.context.onUserLeft(user => this.userLeft(user));
+		this.context.onStopped(() => clearInterval(analyticsTask));
 	}
 
 	/**
@@ -172,15 +210,15 @@ export default class WearAnItem {
 		// The [key, value] syntax breaks each entry of the map into its key and
 		// value automatically.  In the case of 'attachments', the key is the
 		// Guid of the user and the value is the actor/attachment.
-		for (const [userId, attachment] of this.attachedItems) {
+		for (const [userId, attachmentInfo] of this.attachedItems) {
 			// Store the current attach point.
-			const attachPoint = attachment.attachment.attachPoint;
+			const attachPoint = attachmentInfo.attachment.attachment.attachPoint;
 
 			// Detach from the user
-			attachment.detach();
+			attachmentInfo.attachment.detach();
 
 			// Reattach to the user
-			attachment.attach(userId, attachPoint);
+			attachmentInfo.attachment.attach(userId, attachPoint);
 		}
 	};
 
@@ -346,7 +384,7 @@ export default class WearAnItem {
 						return;
 					}
 					console.log(`Permitting the request to wear item ${itemId} from the user: ${userName}`);
-					this.wearItem(itemId, clickedUser.id);
+					this.wearItem(itemId, clickedUser.id, clickedUser?.name);
 				// eslint-disable-next-line @typescript-eslint/unbound-method
 				}).catch(console.error);
 				
@@ -358,7 +396,7 @@ export default class WearAnItem {
 		this.openedMenus.set(user.id, menu);
 	}
 
-	private wearItem(itemId: string, userId: MRE.Guid) {
+	private wearItem(itemId: string, userId: MRE.Guid, userName?: string) {
 		// If the user is wearing an item, destroy it.
 		this.removeItemFromUser(this.context.user(userId));
 
@@ -370,32 +408,34 @@ export default class WearAnItem {
 		}
 
 		// Create the item model and attach it to the avatar.
-		this.attachedItems.set(userId, MRE.Actor.CreateFromLibrary(this.context, {
-			resourceId: itemRecord?.resourceId,
-			actor: {
-				transform: {
-					local: {
-						position: itemRecord?.position,
-						rotation: MRE.Quaternion.FromEulerAngles(
-							(itemRecord?.rotation?.x || 0) * MRE.DegreesToRadians,
-							(itemRecord?.rotation?.y || 0) * MRE.DegreesToRadians,
-							(itemRecord?.rotation?.z || 0) * MRE.DegreesToRadians),
-						scale: itemRecord?.scale,
+		this.attachedItems.set(userId, {
+			userName,
+			attachment: MRE.Actor.CreateFromLibrary(this.context, {
+				resourceId: itemRecord?.resourceId,
+				actor: {
+					transform: {
+						local: {
+							position: itemRecord?.position,
+							rotation: MRE.Quaternion.FromEulerAngles(
+								(itemRecord?.rotation?.x || 0) * MRE.DegreesToRadians,
+								(itemRecord?.rotation?.y || 0) * MRE.DegreesToRadians,
+								(itemRecord?.rotation?.z || 0) * MRE.DegreesToRadians),
+							scale: itemRecord?.scale,
+						}
+					},
+					attachment: {
+						attachPoint: itemRecord?.attachPoint || 'head',
+						userId
 					}
-				},
-				attachment: {
-					attachPoint: itemRecord?.attachPoint || 'head',
-					userId
 				}
-			}
-		}));
+			})});
 
 		// let sync fix know that a user has joined
 		this.userSyncFix.userJoined();
 	}
 
 	private removeItemFromUser(user: MRE.User) {
-		if (this.attachedItems.has(user.id)) { this.attachedItems.get(user.id).destroy(); }
+		if (this.attachedItems.has(user.id)) { this.attachedItems.get(user.id).attachment.destroy(); }
 		this.attachedItems.delete(user.id);
 	}
 
