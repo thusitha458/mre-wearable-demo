@@ -1,4 +1,21 @@
-Displays a menu of hats that avatars can wear. Showcases avatar attachments.
+# MRE Wearables
+
+## Setup Firebase
+
+* Go to your firebase account and download service account json file from Firebase console -> Project settings -> Service accounts.
+* Replace the serviceAccount.json consent with the content in your file.
+
+## Firestore Collections
+
+There are four Firebase Firestore collections. You will need to create two (`permitted-users`, `settings`) on your own. The other two (`events`, `unauthorized-users`) will be automatically created and populated.
+
+1. `permitted-users` collection
+
+![permitted-users](/docs/images/permitted.png)
+
+2. `settings` collection 
+
+![settings](/docs/images/settings.png)
 
 ## Setup
 
@@ -43,16 +60,3 @@ This setup requires launching the app from a terminal. VSCode has a built-in ter
 
 1. In the terminal, in this project's folder, run: `npm run debug-watch`. This will build and start the MRE. The `debug-watch` task continues to run in the background, watching for code changes. It will rebuild and restart the app whenever files are modified.
 2. In VSCode, press `Ctrl+Shift+D` to open the 'Run' tab, select 'Attach to running project' from the drop down at the top, then press `F5` to attach the VSCode debugger. This step isn't required, but allows you to set breakpoints and debug MRE execution.
-
-### See hot-reload in action
-
-Once you have your MRE up and running, and you've successfully spawned an instance in AltspaceVR or another supported platform, it is time to make some code changes and see hot reload in action:
-
-* In VSCode, open `samples/wear-a-hat/app.ts`.
-* Find the line `contents: ''.padStart(8, ' ') + "Wear a Hat",` near the bottom of the file and change it to `contents: ''.padStart(8, ' ') + "Pick a Hat",`.
-* Save the file.
-* Watch how the changes to your code are automatically detected and reloaded. See the menu text change in response to your modified code.
-
-## Attribution
-
-Hat models taken from a sample in the previous AltspaceVR SDK.
