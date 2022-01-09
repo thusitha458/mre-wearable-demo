@@ -74,7 +74,7 @@ export default class WearAnItem {
 	private assets: MRE.AssetContainer;
 	private contentPacks: string[];
 	// Container for instantiated items.
-	private attachedItems = new Map<MRE.Guid, { userName?: string; attachment: MRE.Actor }>();
+	private attachedItems = new Map<MRE.Guid, { userName?: string; attachments: MRE.Actor[] }>();
 	private openedMenus = new Map<MRE.Guid, MRE.Actor>();
 
 	// Load the database of items.
@@ -115,12 +115,12 @@ export default class WearAnItem {
 			params?.content_packs : (params?.content_packs ? [params?.content_packs] as string[] : []);
 
 		const analyticsTask = setInterval(() => {
-			const attachedUsers: Array<{ id: MRE.Guid; name?: string; attachedActorId: MRE.Guid }> = [];
+			const attachedUsers: Array<{ id: MRE.Guid; name?: string; attachedActorIds: MRE.Guid[] }> = [];
 			for (const [userId, attachmentInfo] of this.attachedItems) {
 				attachedUsers.push({
 					id: userId,
 					name: attachmentInfo?.userName,
-					attachedActorId: attachmentInfo?.attachment?.id,
+					attachedActorIds: attachmentInfo?.attachments?.map((attachment) => attachment?.id),
 				});
 			}
 
@@ -211,14 +211,17 @@ export default class WearAnItem {
 		// value automatically.  In the case of 'attachments', the key is the
 		// Guid of the user and the value is the actor/attachment.
 		for (const [userId, attachmentInfo] of this.attachedItems) {
-			// Store the current attach point.
-			const attachPoint = attachmentInfo.attachment.attachment.attachPoint;
+			const attachments = attachmentInfo?.attachments || [];
+			for (const attachment of attachments) {
+				// Store the current attach point.
+				const attachPoint = attachment.attachment.attachPoint;
 
-			// Detach from the user
-			attachmentInfo.attachment.detach();
-
-			// Reattach to the user
-			attachmentInfo.attachment.attach(userId, attachPoint);
+				// Detach from the user
+				attachment.detach();
+	
+				// Reattach to the user
+				attachment.attach(userId, attachPoint);
+			}
 		}
 	};
 
@@ -229,7 +232,7 @@ export default class WearAnItem {
 	private userLeft(user: MRE.User) {
 		// If the user was wearing an item, destroy it. Otherwise it would be
 		// orphaned in the world.
-		this.removeItemFromUser(user);
+		this.removeItemsFromUser(user);
 		this.closeOpenedMenus(user);
 		this.removeGroups(user);
 	}
@@ -397,46 +400,73 @@ export default class WearAnItem {
 	}
 
 	private wearItem(itemId: string, userId: MRE.Guid, userName?: string) {
-		// If the user is wearing an item, destroy it.
-		this.removeItemFromUser(this.context.user(userId));
+		// If the user selected 'CLEAR', then early out.
+		if (itemId === CLEAR_BUTTON_ID) {
+			// If the user is wearing an item, destroy it.
+			this.removeItemsFromUser(this.context.user(userId));
+			return;
+		}
 
 		const itemRecord = this.itemDatabase[itemId];
 
-		// If the user selected 'CLEAR', then early out.
-		if (itemId === CLEAR_BUTTON_ID) {
-			return;
-		}
+		const attachPoint = itemRecord?.attachPoint || 'head';
+
+		// If the user has something in the same attach point, destroy it.
+		this.removeItemsFromUser(this.context.user(userId), attachPoint);
+
+		const oldAttachments = this.attachedItems?.get(userId)?.attachments || [];
 
 		// Create the item model and attach it to the avatar.
 		this.attachedItems.set(userId, {
 			userName,
-			attachment: MRE.Actor.CreateFromLibrary(this.context, {
-				resourceId: itemRecord?.resourceId,
-				actor: {
-					transform: {
-						local: {
-							position: itemRecord?.position,
-							rotation: MRE.Quaternion.FromEulerAngles(
-								(itemRecord?.rotation?.x || 0) * MRE.DegreesToRadians,
-								(itemRecord?.rotation?.y || 0) * MRE.DegreesToRadians,
-								(itemRecord?.rotation?.z || 0) * MRE.DegreesToRadians),
-							scale: itemRecord?.scale,
+			attachments: [
+				...oldAttachments,
+				MRE.Actor.CreateFromLibrary(this.context, {
+					resourceId: itemRecord?.resourceId,
+					actor: {
+						transform: {
+							local: {
+								position: itemRecord?.position,
+								rotation: MRE.Quaternion.FromEulerAngles(
+									(itemRecord?.rotation?.x || 0) * MRE.DegreesToRadians,
+									(itemRecord?.rotation?.y || 0) * MRE.DegreesToRadians,
+									(itemRecord?.rotation?.z || 0) * MRE.DegreesToRadians),
+								scale: itemRecord?.scale,
+							}
+						},
+						attachment: {
+							attachPoint,
+							userId
 						}
-					},
-					attachment: {
-						attachPoint: itemRecord?.attachPoint || 'head',
-						userId
 					}
-				}
-			})});
+				})
+			],
+		});
 
 		// let sync fix know that a user has joined
 		this.userSyncFix.userJoined();
 	}
 
-	private removeItemFromUser(user: MRE.User) {
-		if (this.attachedItems.has(user.id)) { this.attachedItems.get(user.id).attachment.destroy(); }
-		this.attachedItems.delete(user.id);
+	private removeItemsFromUser(user: MRE.User, attachPoint?: MRE.AttachPoint) {
+		const attachmentsToRetain: MRE.Actor[] = [];
+		if (this.attachedItems.has(user.id)) {
+			const attachments = this.attachedItems.get(user.id).attachments || [];
+			for (const attachment of attachments) {
+				if ((attachPoint && attachPoint === attachment.attachment.attachPoint) || !attachPoint) {
+					attachment.destroy();
+				} else {
+					attachmentsToRetain.push(attachment);
+				}
+			}
+		}
+		if (attachmentsToRetain.length > 0 && this.attachedItems.get(user.id)) {
+			this.attachedItems.set(user.id, {
+				...this.attachedItems.get(user.id),
+				attachments: attachmentsToRetain,
+			});
+		} else {
+			this.attachedItems.delete(user.id);
+		}
 	}
 
 	private closeOpenedMenus(user: MRE.User) {
